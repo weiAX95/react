@@ -1,11 +1,12 @@
+export const metadata = {
+  title: 'PNG to GIF Converter',
+  description: 'Convert multiple PNG images to animated GIF',
+}
+
 export default function RootLayout({ children }) {
-    return (
-      <html lang="en">
-        <head>
-          <title>My App</title>
-        </head>
-        <body>{children}</body>
-      </html>
-    );
-  }
-  
+  return (
+    <html lang="zh">
+      <body>{children}</body>
+    </html>
+  )
+}
