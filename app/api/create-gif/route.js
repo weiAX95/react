@@ -1,56 +1,93 @@
+// app/api/create-gif/route.js
 import { NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
-import GifEncoder from 'gif-encoder-2';
 import { Image } from 'image-js';
+import omggif from 'omggif';
+
+export const runtime = 'edge';
 
 export async function POST() {
   try {
-    // 获取img目录的绝对路径
-    const imgDirectory = path.join(process.cwd(), 'img');
+    const imageUrls = [
+      '/img/1.png',
+      '/img/2.png',
+      '/img/3.png'
+    ];
+
+    // 加载所有图片
+    const images = await Promise.all(
+      imageUrls.map(url => 
+        fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${url}`)
+          .then(res => {
+            if (!res.ok) throw new Error(`Failed to load image: ${url}`);
+            return res.arrayBuffer();
+          })
+          .then(buffer => Image.load(buffer))
+      )
+    );
+
+    const { width, height } = images[0];
+
+    // 计算需要的总字节数
+    const framePixels = width * height * 4;  // RGBA
+    const framesCount = images.length;
+    const bufferSize = 1024 + (framePixels * framesCount);  // 预估GIF文件大小
+
+    // 创建输出buffer
+    const buffer = new Uint8Array(bufferSize);
     
-    // 读取所有jpg文件并排序
-    const files = await fs.readdir(imgDirectory);
-    const jpgFiles = files
-      .filter(file => file.endsWith('.png'))
-      .sort((a, b) => a.localeCompare(b));
+    // 创建GIF writer
+    const gifWriter = new omggif.GifWriter(buffer, width, height, {
+      palette: null,
+      loop: 0  // 0 = 无限循环
+    });
 
-    // 读取第一张图片来获取尺寸
-    const firstImage = await Image.load(path.join(imgDirectory, jpgFiles[0]));
-    const { width, height } = firstImage;
-
-    // 初始化GIF编码器
-    const encoder = new GifEncoder(width, height);
-    encoder.setDelay(500); // 500ms每帧
-    encoder.start();
-
-    // 处理每张图片
-    for (const file of jpgFiles) {
-      const image = await Image.load(path.join(imgDirectory, file));
-      // 调整大小并转换为RGB格式
+    // 处理每一帧
+    let offset = 0;
+    for (const image of images) {
+      // 调整图片大小和格式
       const resized = image
-        .resize({ width: width, height: height })
+        .resize({ 
+          width, 
+          height,
+          fit: 'contain',
+          background: [255, 255, 255, 255]
+        })
         .rgba8();
-      
-      // 添加帧到GIF
-      encoder.addFrame(resized.data);
+
+      // 添加帧
+      offset += gifWriter.addFrame(0, 0, width, height, 
+        new Uint8Array(resized.data), {
+          delay: 50,  // 50 = 500ms
+          transparent: true,
+          disposal: 2
+        });
     }
 
-    encoder.finish();
+    // 截取实际使用的buffer部分
+    const finalBuffer = buffer.slice(0, offset);
 
-    // 获取生成的GIF数据
-    const gifBuffer = encoder.out.getData();
-
-    return new NextResponse(gifBuffer, {
+    // 返回生成的GIF
+    return new NextResponse(finalBuffer, {
       headers: {
         'Content-Type': 'image/gif',
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
       },
     });
+
   } catch (error) {
     console.error('Error creating GIF:', error);
     return NextResponse.json(
-      { message: 'Error creating GIF', error: error.message },
-      { status: 500 }
+      { 
+        message: 'Failed to create GIF', 
+        error: error.message 
+      }, 
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        }
+      }
     );
   }
 }

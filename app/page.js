@@ -1,74 +1,56 @@
+// app/page.js
 'use client';
+import { useState, useEffect } from 'react';
+// 更新导入语句，使用新的导入方式
+import { generateClient } from 'aws-amplify/api';
+import { Amplify } from 'aws-amplify';
+import './aws-config';
 
-import { useEffect, useState } from 'react';
+// 创建 API 客户端
+const client = generateClient();
 
-export default function Home() {
-  const [gifUrl, setGifUrl] = useState('');
-  const [loading, setLoading] = useState(true);
+const getPageDataQuery = `
+  query GetPageData {
+    getPageData {
+      id
+      title
+      content
+      createdAt
+    }
+  }
+`;
+
+export default function Page() {
+  const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
+  async function fetchData() {
+    try {
+      // 使用 client 替代 API
+      const result = await client.graphql({
+        query: getPageDataQuery,
+        authMode: 'apiKey'
+      });
+      
+      setData(result.data.getPageData);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError(err.message);
+    }
+  }
+
   useEffect(() => {
-    createGif();
+    fetchData();
   }, []);
 
-  const createGif = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/create-gif', {
-        method: 'POST'
-      });
-
-      if (!response.ok) {
-        throw new Error('GIF生成失败');
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      setGifUrl(url);
-    } catch (error) {
-      console.error('Error:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (error) return <div>Error loading data: {error}</div>;
+  if (!data) return <div>Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h1 className="text-2xl font-bold mb-4">本地图片GIF转换</h1>
-          
-          {loading ? (
-            <div className="text-center py-4">
-              <p>正在生成GIF...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center py-4 text-red-600">
-              <p>出错了：{error}</p>
-              <button 
-                onClick={createGif}
-                className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                重试
-              </button>
-            </div>
-          ) : gifUrl ? (
-            <div className="mt-4">
-              <img src={gifUrl} alt="Generated GIF" className="w-full rounded-lg" />
-              <a
-                href={gifUrl}
-                download="result.gif"
-                className="mt-2 inline-block text-blue-600 hover:text-blue-800"
-              >
-                下载GIF
-              </a>
-            </div>
-          ) : null}
-        </div>
-      </div>
+    <div>
+      <h1>{data.title}</h1>
+      <p>{data.content}</p>
+      <p>Created at: {data.createdAt}</p>
     </div>
   );
 }
